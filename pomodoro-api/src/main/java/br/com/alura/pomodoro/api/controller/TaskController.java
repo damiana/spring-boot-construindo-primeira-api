@@ -1,6 +1,7 @@
 package br.com.alura.pomodoro.api.controller;
 
 import br.com.alura.pomodoro.api.model.Task;
+import br.com.alura.pomodoro.api.repository.TaskRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -13,68 +14,56 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/tasks")
 public class TaskController {
 
-    private List<Task> tasks = new ArrayList<>();
-    private AtomicLong nextId = new AtomicLong(1);
+    private final TaskRepository taskRepository;
 
-    public TaskController() {
-        tasks.add(new Task(nextId.getAndIncrement(), "Estudar Spring Boot", false));
-        tasks.add(new Task(nextId.getAndIncrement(), "Fazer exercícios de revisão", false));
-        tasks.add(new Task(nextId.getAndIncrement(), "Assistir aula de testes", true));
+    public TaskController(TaskRepository taskRepository) {
+        this.taskRepository = taskRepository;
     }
 
     @GetMapping
     public ResponseEntity<List<Task>> getTasks(@RequestParam(required = false) Boolean completed) {
         if (completed == null) {
-            return ResponseEntity.ok(tasks);
+            return ResponseEntity.ok(taskRepository.findAll());
         }
-        return ResponseEntity.ok(tasks.stream()
-                .filter(task -> task.getCompleted().equals(completed))
-                .collect(Collectors.toList()));
+        return ResponseEntity.ok(taskRepository.findByCompleted(completed));
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<Task> getTaskById(@PathVariable Long id) {
+        return taskRepository.findById(id)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
     }
 
     @PostMapping
     public ResponseEntity<Task> createTask(@RequestBody Task task) {
-        task.setId(nextId.getAndIncrement());
-        tasks.add(task);
-        return ResponseEntity.status(HttpStatus.CREATED).body(task);
+        Task saved = taskRepository.save(task);
+        return ResponseEntity.status(HttpStatus.CREATED).body(saved);
     }
 
     @PutMapping("/{id}")
     public ResponseEntity<Task> updateTask(@PathVariable Long id, @RequestBody Task task) {
-        return tasks.stream()
-                .filter(t -> t.getId().equals(id))
-                .findFirst()
+        return taskRepository.findById(id)
                 .map(existing -> {
                     existing.setTitle(task.getTitle());
                     existing.setCompleted(task.getCompleted());
-                    return ResponseEntity.ok(existing);
+                    return ResponseEntity.ok(taskRepository.save(existing));
                 })
                 .orElse(ResponseEntity.notFound().build());
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteTask(@PathVariable Long id) {
-        boolean removed = tasks.removeIf(t -> t.getId().equals(id));
-        return removed
-                ? ResponseEntity.noContent().build()
-                : ResponseEntity.notFound().build();
-    }
-
-    @GetMapping("/{id}")
-    public ResponseEntity<Task> getTaskById(@PathVariable Long id) {
-        return tasks.stream()
-                .filter(task -> task.getId().equals(id))
-                .findFirst()
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+        if (!taskRepository.existsById(id)) {
+            return ResponseEntity.notFound().build();
+        }
+        taskRepository.deleteById(id);
+        return ResponseEntity.noContent().build();
     }
 }
