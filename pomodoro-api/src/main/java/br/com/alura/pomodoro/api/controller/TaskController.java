@@ -1,7 +1,10 @@
 package br.com.alura.pomodoro.api.controller;
 
+import br.com.alura.pomodoro.api.dto.TaskRequestDTO;
+import br.com.alura.pomodoro.api.dto.TaskResponseDTO;
 import br.com.alura.pomodoro.api.model.Task;
 import br.com.alura.pomodoro.api.repository.TaskRepository;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,33 +30,34 @@ public class TaskController {
     }
 
     @GetMapping
-    public ResponseEntity<List<Task>> getTasks(@RequestParam(required = false) Boolean completed) {
-        if (completed == null) {
-            return ResponseEntity.ok(taskRepository.findAll());
-        }
-        return ResponseEntity.ok(taskRepository.findByCompleted(completed));
+    public ResponseEntity<List<TaskResponseDTO>> getTasks(@RequestParam(required = false) Boolean completed) {
+        List<Task> tasks = completed == null
+                ? taskRepository.findAll()
+                : taskRepository.findByCompleted(completed);
+        return ResponseEntity.ok(tasks.stream().map(this::toDTO).toList());
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Task> getTaskById(@PathVariable Long id) {
+    public ResponseEntity<TaskResponseDTO> getTaskById(@PathVariable Long id) {
         return taskRepository.findById(id)
-                .map(ResponseEntity::ok)
+                .map(task -> ResponseEntity.ok(toDTO(task)))
                 .orElse(ResponseEntity.notFound().build());
     }
 
     @PostMapping
-    public ResponseEntity<Task> createTask(@RequestBody Task task) {
-        Task saved = taskRepository.save(task);
-        return ResponseEntity.status(HttpStatus.CREATED).body(saved);
+    public ResponseEntity<TaskResponseDTO> createTask(@Valid @RequestBody TaskRequestDTO dto) {
+        Task saved = taskRepository.save(toEntity(dto));
+        return ResponseEntity.status(HttpStatus.CREATED).body(toDTO(saved));
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<Task> updateTask(@PathVariable Long id, @RequestBody Task task) {
+    public ResponseEntity<TaskResponseDTO> updateTask(@PathVariable Long id, @Valid @RequestBody TaskRequestDTO dto) {
         return taskRepository.findById(id)
                 .map(existing -> {
-                    existing.setTitle(task.getTitle());
-                    existing.setCompleted(task.getCompleted());
-                    return ResponseEntity.ok(taskRepository.save(existing));
+                    Task updated = toEntity(dto);
+                    existing.setTitle(updated.getTitle());
+                    existing.setCompleted(updated.getCompleted());
+                    return ResponseEntity.ok(toDTO(taskRepository.save(existing)));
                 })
                 .orElse(ResponseEntity.notFound().build());
     }
@@ -65,5 +69,16 @@ public class TaskController {
         }
         taskRepository.deleteById(id);
         return ResponseEntity.noContent().build();
+    }
+
+    private TaskResponseDTO toDTO(Task task) {
+        return new TaskResponseDTO(task.getId(), task.getTitle(), task.getCompleted());
+    }
+
+    private Task toEntity(TaskRequestDTO dto) {
+        Task task = new Task();
+        task.setTitle(dto.title());
+        task.setCompleted(dto.completed() != null ? dto.completed() : false);
+        return task;
     }
 }
